@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+include(FetchContent)
+
 add_library(
         gfxstream_backend_headers
         INTERFACE)
@@ -96,8 +98,61 @@ else()
     set(stream-server-core-platform-sources native_sub_window_x11.cpp)
 endif()
 
+# Add xrtransport
 
+set(XRTRANSPORT_BUILD_CLIENT OFF CACHE BOOL "")
+set(XRTRANSPORT_BUILD_SERVER ON CACHE BOOL "")
+set(XRTRANSPORT_BUILD_TESTS OFF CACHE BOOL "")
+set(XRTRANSPORT_BUILD_FOR_GFXSTREAM ON CACHE BOOL "")
 
+set(XRTRANSPORT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../../external/xrtransport)
+
+FetchContent_Declare(
+    xrtransport
+    SOURCE_DIR ${XRTRANSPORT_DIR}
+)
+FetchContent_MakeAvailable(xrtransport)
+
+# not sure if there's a more concise way to do this, but it won't build without it
+foreach(target
+    xrtransport_server
+    xrtransport_transport
+    xrtransport_serialization
+    module_server_vulkan
+    module_common_vulkan
+    static_server_modules
+    Vulkan::Vulkan
+    OpenXR::headers
+    openxr_loader)
+    android_license(
+        TARGET ${target}
+        LIBNAME None
+        SPDX None
+        LICENSE None
+        LOCAL None
+    )
+endforeach()
+
+# xrtransport needs exceptions enabled
+foreach(target
+    xrtransport_server
+    xrtransport_transport
+    xrtransport_serialization
+    module_server_vulkan
+    static_server_modules
+    openxr_loader)
+    if(MSVC)
+        target_compile_options(${target} PRIVATE -EHsc)
+        target_compile_definitions(${target} PRIVATE -D_HAS_EXCEPTIONS=1)
+    else()
+        target_compile_options(${target} PRIVATE -fexceptions)
+
+        # also need to let it access the local system for dependencies because xrtransport adds
+        # system dependencies that are not in the Google-provided sysroot (XCB specifically)
+        target_compile_options(${target} PRIVATE -idirafter /usr/include)
+        target_link_directories(${target} PRIVATE /usr/lib /usr/lib64)
+    endif()
+endforeach()
 
 # Compile everything as a static library first so that unit tests can call non-exported functions
 add_library(
@@ -131,6 +186,7 @@ target_link_libraries(
         gfxstream_xcb_headers
         GLES_CM_translator_static
         renderControl_dec
+        xrtransport_server
         )
 
 target_include_directories(
