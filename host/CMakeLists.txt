@@ -100,9 +100,6 @@ endif()
 
 # Add xrtransport
 
-set(XRTRANSPORT_BUILD_CLIENT OFF CACHE BOOL "")
-set(XRTRANSPORT_BUILD_SERVER ON CACHE BOOL "")
-set(XRTRANSPORT_BUILD_TESTS OFF CACHE BOOL "")
 set(XRTRANSPORT_BUILD_FOR_GFXSTREAM ON CACHE BOOL "")
 
 set(XRTRANSPORT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../../external/xrtransport)
@@ -112,6 +109,16 @@ FetchContent_Declare(
     SOURCE_DIR ${XRTRANSPORT_DIR}
 )
 FetchContent_MakeAvailable(xrtransport)
+
+# allow module_server_vulkan to include vulkan_dispatch.h and vulkan_boxed_handles.h
+target_include_directories(module_server_vulkan PRIVATE
+    ${GFXSTREAM_REPO_ROOT}/host/vulkan
+    ${GFXSTREAM_REPO_ROOT}/host/vulkan/cereal/common
+    ${GFXSTREAM_REPO_ROOT}/host/include
+    ${GFXSTREAM_REPO_ROOT}/host/common/include
+    ${GFXSTREAM_REPO_ROOT}/host/features/include
+    ${GFXSTREAM_REPO_ROOT}/common/base/include
+)
 
 # not sure if there's a more concise way to do this, but it won't build without it
 foreach(target
