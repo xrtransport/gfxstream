@@ -98,7 +98,76 @@ else()
     set(stream-server-core-platform-sources native_sub_window_x11.cpp)
 endif()
 
-# Add xrtransport
+# Compile everything as a static library first so that unit tests can call non-exported functions
+add_library(
+        gfxstream_backend_static
+        STATIC
+        ${stream-server-core-sources}
+        ${stream-server-core-platform-sources}
+)
+target_link_libraries(
+        gfxstream_backend_static
+        PUBLIC
+        ${GFXSTREAM_HOST_COMMON_LIB}
+        gfxstream_backend.headers
+        gfxstream_common_base
+        gfxstream_common_logging
+        gfxstream_drm_headers
+        gfxstream_features
+        gfxstream_glm_headers
+        gfxstream_host_address_space
+        gfxstream_host_common
+        gfxstream_host_decoder_common
+        gfxstream_host_iostream
+        gfxstream_host_library
+        gfxstream_host_renderdoc
+        gfxstream_host_snapshot.headers
+        gfxstream_host_tracing
+        gfxstream_opengl_headers
+        gfxstream_openglesdispatch
+        gfxstream-gl-server
+        gfxstream-vulkan-server
+        gfxstream_xcb_headers
+        GLES_CM_translator_static
+        renderControl_dec
+        )
+
+target_include_directories(
+        gfxstream_backend_static
+        PUBLIC
+        ${GFXSTREAM_REPO_ROOT}
+        ${GFXSTREAM_REPO_ROOT}/host
+        ${GFXSTREAM_REPO_ROOT}/host/include
+        ${GFXSTREAM_REPO_ROOT}/host/gfxstream_host_decoder_common
+        ${GFXSTREAM_REPO_ROOT}/host/gl
+        ${GFXSTREAM_REPO_ROOT}/host/gl/glestranslator/include
+        ${GFXSTREAM_REPO_ROOT}/host/vulkan
+        ${GFXSTREAM_REPO_ROOT}/host/vulkan/cereal/common
+        )
+
+if (APPLE)
+    target_link_libraries(gfxstream_backend_static PUBLIC "-framework AppKit -framework QuartzCore -framework IOSurface")
+endif()
+if (WIN32)
+    target_link_libraries(gfxstream_backend_static PRIVATE D3d9.lib)
+endif()
+
+# Suppress some warnings
+target_compile_options(
+    gfxstream_backend_static
+    PRIVATE
+    -Wall
+    -Wextra
+    -Werror
+    -Wno-missing-field-initializers
+    -Wno-unused-parameter
+    -Wno-unused-private-field
+    -Wno-return-type-c-linkage
+    -Wno-extern-c-compat
+    -DGFXSTREAM_ENABLE_HOST_GLES=1
+    )
+
+#### BEGIN XRTRANSPORT MODIFICATIONS ####
 
 set(XRTRANSPORT_BUILD_FOR_GFXSTREAM ON CACHE BOOL "")
 
@@ -161,75 +230,14 @@ foreach(target
     endif()
 endforeach()
 
-# Compile everything as a static library first so that unit tests can call non-exported functions
-add_library(
-        gfxstream_backend_static
-        STATIC
-        ${stream-server-core-sources}
-        ${stream-server-core-platform-sources}
+target_include_directories(gfxstream_backend_static PRIVATE
+    ${XRTRANSPORT_DIR}/include
 )
-target_link_libraries(
-        gfxstream_backend_static
-        PUBLIC
-        ${GFXSTREAM_HOST_COMMON_LIB}
-        gfxstream_backend.headers
-        gfxstream_common_base
-        gfxstream_common_logging
-        gfxstream_drm_headers
-        gfxstream_features
-        gfxstream_glm_headers
-        gfxstream_host_address_space
-        gfxstream_host_common
-        gfxstream_host_decoder_common
-        gfxstream_host_iostream
-        gfxstream_host_library
-        gfxstream_host_renderdoc
-        gfxstream_host_snapshot.headers
-        gfxstream_host_tracing
-        gfxstream_opengl_headers
-        gfxstream_openglesdispatch
-        gfxstream-gl-server
-        gfxstream-vulkan-server
-        gfxstream_xcb_headers
-        GLES_CM_translator_static
-        renderControl_dec
-        xrtransport_server
-        )
+target_link_libraries(gfxstream_backend_static PUBLIC
+    xrtransport_server
+)
 
-target_include_directories(
-        gfxstream_backend_static
-        PUBLIC
-        ${GFXSTREAM_REPO_ROOT}
-        ${GFXSTREAM_REPO_ROOT}/host
-        ${GFXSTREAM_REPO_ROOT}/host/include
-        ${GFXSTREAM_REPO_ROOT}/host/gfxstream_host_decoder_common
-        ${GFXSTREAM_REPO_ROOT}/host/gl
-        ${GFXSTREAM_REPO_ROOT}/host/gl/glestranslator/include
-        ${GFXSTREAM_REPO_ROOT}/host/vulkan
-        ${GFXSTREAM_REPO_ROOT}/host/vulkan/cereal/common
-        )
-
-if (APPLE)
-    target_link_libraries(gfxstream_backend_static PUBLIC "-framework AppKit -framework QuartzCore -framework IOSurface")
-endif()
-if (WIN32)
-    target_link_libraries(gfxstream_backend_static PRIVATE D3d9.lib)
-endif()
-
-# Suppress some warnings
-target_compile_options(
-    gfxstream_backend_static
-    PRIVATE
-    -Wall
-    -Wextra
-    -Werror
-    -Wno-missing-field-initializers
-    -Wno-unused-parameter
-    -Wno-unused-private-field
-    -Wno-return-type-c-linkage
-    -Wno-extern-c-compat
-    -DGFXSTREAM_ENABLE_HOST_GLES=1
-    )
+#### END XRTRANSPORT MODIFICATIONS ####
 
 # gfxstream_backend.dll
 add_library(

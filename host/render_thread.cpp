@@ -40,6 +40,8 @@
 #include "vulkan/vk_common_operations.h"
 #include "vulkan/vk_decoder_context.h"
 
+#include "xrtransport/server/server_c_api.h"
+
 namespace gfxstream {
 namespace host {
 
@@ -429,6 +431,79 @@ intptr_t RenderThread::main() {
 
             progress = false;
             size_t last;
+
+            //
+            // check if the special xrtransport opcode was sent, and if so,
+            // take over this thread until the xrtransport server terminates
+            //
+            if (readBuf.validData() >= 8) {
+                uint32_t opcode{};
+                uint32_t size{};
+
+                std::memcpy(&opcode, readBuf.buf(), sizeof(uint32_t));
+                std::memcpy(&size, readBuf.buf() + 4, sizeof(uint32_t));
+
+                if (opcode == 5892) {
+                    readBuf.consume(8);
+
+                    struct XrtransportStream {
+                        unsigned char* buffer;
+                        size_t buffer_remaining;
+                        IOStream* stream;
+                    } stream_state;
+
+                    // I can confirm from investigation that validData accounts for
+                    // *all* of the data the ReadBuffer read from the stream
+                    stream_state.buffer = readBuf.buf();
+                    stream_state.buffer_remaining = readBuf.validData();
+                    stream_state.stream = ioStream;
+
+                    // stream delegates
+                    auto read_some = [](void* cookie, void* buf, size_t size, int* ec) -> size_t {
+                        auto stream_state = reinterpret_cast<XrtransportStream*>(cookie);
+                        *ec = 0;
+
+                        size_t total_read = 0;
+
+                        if (stream_state->buffer_remaining > 0) {
+                            size_t consume_from_buffer = std::min(size, stream_state->buffer_remaining);
+                            std::memcpy(buf, stream_state->buffer, consume_from_buffer);
+
+                            // update stream state
+                            stream_state->buffer += consume_from_buffer;
+                            stream_state->buffer_remaining -= consume_from_buffer;
+
+                            total_read += consume_from_buffer;
+                        }
+
+                        if (size - total_read > 0) {
+                            total_read += stream_state->stream->read((unsigned char*)buf + total_read, size - total_read);
+                        }
+
+                        return total_read;
+                    };
+                    auto write_some = [](void* cookie, const void* buf, size_t size, int* ec) -> size_t {
+                        auto stream_state = reinterpret_cast<XrtransportStream*>(cookie);
+                        *ec = 0;
+
+                        int write_result = stream_state->stream->writeFully(buf, size);
+                        if (write_result < 0) {
+                            *ec = EPIPE;
+                            return 0;
+                        }
+                        else {
+                            return size;
+                        }
+                    };
+                    auto close = [](void* cookie, int* ec) -> void {
+                        // no-op
+                        // TODO: figure out if there's a way that makes sense to close the stream
+                    };
+
+                    // take over the thread until the server exits
+                    xrtp_run_server(&stream_state, read_some, write_some, close);
+                }
+            }
 
             //
             // try to process some of the command buffer using the
